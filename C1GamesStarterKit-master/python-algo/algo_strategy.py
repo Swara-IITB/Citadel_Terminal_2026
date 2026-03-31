@@ -74,58 +74,67 @@ class AlgoStrategy(gamelib.AlgoCore):
                 supports_fully_upgraded = False
 
         for x in self.breached_lanes:
-            wall_loc = [x, 13]
-            game_state.attempt_spawn(WALL, wall_loc)
+            front_turret_loc = [x, 13]
+            game_state.attempt_spawn(TURRET, front_turret_loc)
 
         if supports_fully_upgraded:
             for x in self.breached_lanes:
-                wall_loc = [x, 13]
-                turret_loc = [x, 12] 
+                front_turret_loc = [x, 13]
                 
-                game_state.attempt_spawn(TURRET, turret_loc)
-                game_state.attempt_upgrade(turret_loc) 
-                game_state.attempt_upgrade(wall_loc)
+                
+                back_turret_loc = [x, 11] 
+                
+                game_state.attempt_spawn(TURRET, back_turret_loc)
+                game_state.attempt_upgrade(front_turret_loc)
 
     def build_greedy_turrets(self, game_state):
         greedy_locations = []
         
-        for x in range(0, 13, 2):  
+        
+        for x in range(0, 13, 3):  
             greedy_locations.append([x, 13])
-        for x in range(27, 14, -2): 
+        for x in range(27, 14, -3): 
             greedy_locations.append([x, 13])
             
-        for x in range(1, 13, 2):
-            greedy_locations.append([x, 12])
-        for x in range(26, 14, -2):
-            greedy_locations.append([x, 12])
+        
+        for x in range(1, 13, 3):
+            greedy_locations.append([x, 11])
+        for x in range(26, 14, -3):
+            greedy_locations.append([x, 11])
 
         game_state.attempt_spawn(TURRET, greedy_locations)
 
     def send_scouts(self, game_state):
+        if game_state.get_resource(MP) < 1:
+            return
+
         friendly_edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + \
                          game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
         
         deploy_locations = self.filter_blocked_locations(friendly_edges, game_state)
         
-        if deploy_locations:
-            num_samples = min(5, len(deploy_locations))
-            random_options = random.sample(deploy_locations, num_samples)
+        if not deploy_locations:
+            return
+
+        if game_state.turn_number <= 1:
+            corner_options = [[0, 13], [1, 12], [2, 11], [27, 13], [26, 12], [25, 11]]
+            valid_corners = [loc for loc in corner_options if loc in deploy_locations]
             
-            best_location, is_landlocked = self.least_damage_spawn_location(game_state, random_options)
-            
-            if best_location:
-                if is_landlocked:
-                    
-                    game_state.attempt_spawn(DEMOLISHER, best_location, 1000)
-                else:
-                    
-                    
-                    if game_state.my_health <= 10:
-                        game_state.attempt_spawn(SCOUT, best_location, 1000)
-                    else:
-                        
-                        if game_state.get_resource(MP) >= 6:
-                            game_state.attempt_spawn(SCOUT, best_location, 1000)
+            if valid_corners:
+                spawn_loc = random.choice(valid_corners)
+                game_state.attempt_spawn(SCOUT, spawn_loc, 5)
+                return
+
+        num_samples = min(5, len(deploy_locations))
+        random_options = random.sample(deploy_locations, num_samples)
+        
+        best_location, is_landlocked = self.least_damage_spawn_location(game_state, random_options)
+        
+        if best_location:
+            if is_landlocked:
+                game_state.attempt_spawn(DEMOLISHER, best_location, 1000)
+            else:
+                game_state.attempt_spawn(SCOUT, best_location, 1000)
 
     def least_damage_spawn_location(self, game_state, location_options):
         enemy_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + \
@@ -133,6 +142,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                       
         valid_options = []
         valid_damages = []
+        
         landlocked_options = []
         landlocked_damages = []
         
@@ -143,6 +153,9 @@ class AlgoStrategy(gamelib.AlgoCore):
                 damage += len(game_state.get_attackers(path_location, 0)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
             
             if path[-1] in enemy_edges:
+                if damage == 0:
+                    return location, False
+                    
                 valid_options.append(location)
                 valid_damages.append(damage)
             else:
