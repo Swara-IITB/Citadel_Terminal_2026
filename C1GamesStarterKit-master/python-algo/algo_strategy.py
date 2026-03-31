@@ -5,6 +5,7 @@ import warnings
 from sys import maxsize
 import json
 
+"FREE"
 class AlgoStrategy(gamelib.AlgoCore):
     def __init__(self):
         super().__init__()
