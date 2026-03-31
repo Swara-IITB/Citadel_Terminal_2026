@@ -13,9 +13,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         gamelib.debug_write('Random seed: {}'.format(seed))
 
     def on_game_start(self, config):
-        """ 
-        Read in config and perform any initial setup here 
-        """
         gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
         global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP
@@ -28,9 +25,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         MP = 1
         SP = 0
         
-        
         self.scored_on_locations = []
-        
         self.breached_lanes = []
 
     def on_turn(self, turn_state):
@@ -39,7 +34,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state.suppress_warnings(True)
 
         self.my_strategy(game_state)
-
         game_state.submit_turn()
 
     def my_strategy(self, game_state):
@@ -49,14 +43,12 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.send_scouts(game_state)
 
     def build_initial_defenses(self, game_state):
-        
         core_supports = [[13, 9], [14, 9], [13, 10], [14, 10]]
         upgraded_supports = [[13, 10], [14, 10]]
         
         game_state.attempt_spawn(SUPPORT, core_supports)
         game_state.attempt_upgrade(upgraded_supports)
 
-        
         core_turrets = [[12, 10], [13, 11], [14, 11], [15, 10]]
         game_state.attempt_spawn(TURRET, core_turrets)
 
@@ -68,11 +60,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         
         self.scored_on_locations = []
 
-        
         middle_supports = [[13, 9], [14, 9]]
         game_state.attempt_upgrade(middle_supports)
 
-        
         supports_fully_upgraded = True
         for loc in middle_supports:
             is_upgraded = False
@@ -83,18 +73,17 @@ class AlgoStrategy(gamelib.AlgoCore):
             if not is_upgraded:
                 supports_fully_upgraded = False
 
-        
         for x in self.breached_lanes:
             wall_loc = [x, 13]
             game_state.attempt_spawn(WALL, wall_loc)
 
-        
         if supports_fully_upgraded:
             for x in self.breached_lanes:
                 wall_loc = [x, 13]
                 turret_loc = [x, 12] 
                 
                 game_state.attempt_spawn(TURRET, turret_loc)
+                game_state.attempt_upgrade(turret_loc) 
                 game_state.attempt_upgrade(wall_loc)
 
     def build_greedy_turrets(self, game_state):
@@ -113,20 +102,14 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state.attempt_spawn(TURRET, greedy_locations)
 
     def send_scouts(self, game_state):
-        """
-        Always send scouts every turn, but avoid landlocked paths.
-        If all paths are blocked, send Demolishers to break the walls.
-        """
         friendly_edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + \
                          game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
         
         deploy_locations = self.filter_blocked_locations(friendly_edges, game_state)
         
         if deploy_locations:
-            
             num_samples = min(5, len(deploy_locations))
             random_options = random.sample(deploy_locations, num_samples)
-            
             
             best_location, is_landlocked = self.least_damage_spawn_location(game_state, random_options)
             
@@ -136,20 +119,20 @@ class AlgoStrategy(gamelib.AlgoCore):
                     game_state.attempt_spawn(DEMOLISHER, best_location, 1000)
                 else:
                     
-                    game_state.attempt_spawn(SCOUT, best_location, 1000)
+                    
+                    if game_state.my_health <= 10:
+                        game_state.attempt_spawn(SCOUT, best_location, 1000)
+                    else:
+                        
+                        if game_state.get_resource(MP) >= 6:
+                            game_state.attempt_spawn(SCOUT, best_location, 1000)
 
     def least_damage_spawn_location(self, game_state, location_options):
-        """
-        Evaluates paths. Separates valid paths (reach the enemy edge) from 
-        landlocked paths (end early at a wall). Returns the best location and 
-        a boolean indicating if it is forced to use a landlocked path.
-        """
         enemy_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + \
                       game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT)
                       
         valid_options = []
         valid_damages = []
-        
         landlocked_options = []
         landlocked_damages = []
         
@@ -159,7 +142,6 @@ class AlgoStrategy(gamelib.AlgoCore):
             for path_location in path:
                 damage += len(game_state.get_attackers(path_location, 0)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
             
-            
             if path[-1] in enemy_edges:
                 valid_options.append(location)
                 valid_damages.append(damage)
@@ -167,12 +149,9 @@ class AlgoStrategy(gamelib.AlgoCore):
                 landlocked_options.append(location)
                 landlocked_damages.append(damage)
         
-        
         if valid_options:
             best_idx = valid_damages.index(min(valid_damages))
             return valid_options[best_idx], False
-        
-        
         elif landlocked_options:
             best_idx = landlocked_damages.index(min(landlocked_damages))
             return landlocked_options[best_idx], True
