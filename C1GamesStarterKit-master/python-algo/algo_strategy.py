@@ -13,7 +13,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         gamelib.debug_write('Random seed: {}'.format(seed))
 
     def on_game_start(self, config):
-        """ Read in config and perform any initial setup here """
+        gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
         global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP
         WALL = config["unitInformation"][0]["shorthand"]
@@ -27,93 +27,89 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.scored_on_locations = []
 
     def on_turn(self, turn_state):
-        """ This function is called every turn with the game state wrapper """
-        game_state = gamelib.GameState(self.config, turn_state)
-        game_state.suppress_warnings(True)
+        try:
+            game_state = gamelib.GameState(self.config, turn_state)
+            gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
+            game_state.suppress_warnings(True)
 
-        self.starter_strategy(game_state)
-
-        game_state.submit_turn()
+            self.starter_strategy(game_state)
+            game_state.submit_turn()
+        except Exception as e:
+            gamelib.debug_write('CRITICAL ERROR in on_turn: {}'.format(e))
 
     def starter_strategy(self, game_state):
-        """ The Adaptive Engine: Sieve, Bridge, Backup, and Swarm """
-        self.adaptive_bridge_and_swarm(game_state)
+        self.maintain_and_build_defenses(game_state)
         self.build_reactive_defense(game_state)
+        self.dynamic_offense(game_state)
 
-    def adaptive_bridge_and_swarm(self, game_state):
+    def maintain_and_build_defenses(self, game_state):
         self.frontline_gaps = []
         
         
         
-        for x in range(28):
-            loc = [x, 13]
-            unit = game_state.contains_stationary_unit(loc)
-            if unit:
-                
-                threshold = 72 if unit.unit_type == WALL else 42
-                if unit.health < threshold:
-                    backup_loc = [x, 12]
+        anchors = [0, 27, 4, 23, 8, 19, 12, 15]
+        
+        fillers = [2, 25, 6, 21, 10, 17]
+        
+        remaining = [i for i in range(28) if i not in anchors + fillers + [13, 14]]
+        
+        
+        build_order = anchors + fillers + remaining
+        
+        for x in build_order:
+            
+            dist_from_edge = x if x < 14 else 27 - x
+            target_y = 13 if dist_from_edge % 2 == 0 else 12
+            loc = [x, target_y]
+            
+            if game_state.contains_stationary_unit(loc):
+                units = game_state.game_map[tuple(loc)]
+                if units and units[0].health < 30:
                     
-                    if not game_state.contains_stationary_unit(backup_loc) and x not in [13, 14]:
-                        if game_state.get_resource(SP) >= 3:
-                            game_state.attempt_spawn(WALL, [backup_loc])
-                            game_state.attempt_upgrade([backup_loc])
+                    if game_state.get_resource(SP) >= 3:
+                        game_state.attempt_spawn(TURRET, [[x, 11]])
             else:
-                
-                if x not in [13, 14]:
-                    self.frontline_gaps.append(x)
+                if game_state.get_resource(SP) >= 3:
+                    game_state.attempt_spawn(TURRET, [loc])
+                else:
+                    
+                    
+                    if x in anchors:
+                        self.frontline_gaps.append(x)
 
         
-        
-        anchors = [0, 5, 10, 17, 22, 27]
-        for x in anchors:
-            loc = [x, 13]
-            if not game_state.contains_stationary_unit(loc) and game_state.get_resource(SP) >= 3:
-                game_state.attempt_spawn(TURRET, [loc])
-                if x in self.frontline_gaps: self.frontline_gaps.remove(x)
+        if game_state.get_resource(SP) >= 4:
+            game_state.attempt_spawn(SUPPORT, [[13, 11], [14, 11]])
 
-        
-        for x in range(28):
-            if x in [13, 14] or x in anchors: continue
-            loc = [x, 13]
-            if not game_state.contains_stationary_unit(loc) and game_state.get_resource(SP) >= 3:
-                game_state.attempt_spawn(WALL, [loc])
-                game_state.attempt_upgrade([loc])
-                if x in self.frontline_gaps: self.frontline_gaps.remove(x)
-
-        
+    def dynamic_offense(self, game_state):
         current_mp = game_state.get_resource(MP)
         
         
-        if len(self.frontline_gaps) > 0 and current_mp >= 3:
-            avg_gap_x = sum(self.frontline_gaps) / len(self.frontline_gaps)
-            edge_type = game_state.game_map.BOTTOM_LEFT if avg_gap_x < 14 else game_state.game_map.BOTTOM_RIGHT
-            edges = game_state.game_map.get_edge_locations(edge_type)
+        if len(self.frontline_gaps) > 2 and current_mp >= 1:
+            edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + \
+                    game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
             deploy_options = self.filter_blocked_locations(edges, game_state)
-            
             if deploy_options:
-                spawn_loc = deploy_options[len(deploy_options)//2]
-                game_state.attempt_spawn(INTERCEPTOR, spawn_loc, 1)
-                
-                if game_state.get_resource(MP) > 0:
-                    game_state.attempt_spawn(SCOUT, spawn_loc, game_state.get_resource(MP))
-
+                game_state.attempt_spawn(INTERCEPTOR, deploy_options[0], 1)
+                game_state.attempt_spawn(SCOUT, deploy_options[0], 1000)
+                    
         
-        elif len(self.frontline_gaps) == 0 and current_mp >= 6:
+        elif current_mp >= 6:
             all_edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + \
                         game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
-            deploy_options = self.filter_blocked_locations(all_edges, game_state)
             
+            deploy_options = self.filter_blocked_locations(all_edges, game_state)
             if deploy_options:
                 best_loc = self.least_damage_spawn_location(game_state, deploy_options)
                 
-                game_state.attempt_spawn(DEMOLISHER, best_loc, 1)
                 game_state.attempt_spawn(SCOUT, best_loc, 1000)
 
     def build_reactive_defense(self, game_state):
         for location in self.scored_on_locations:
-            build_location = [location[0], location[1]+1]
-            game_state.attempt_spawn(TURRET, build_location)
+            if game_state.get_resource(SP) >= 3:
+                build_location = [location[0], 11]
+                if game_state.game_map.in_arena_bounds(build_location):
+                    game_state.attempt_spawn(TURRET, build_location)
 
     def filter_blocked_locations(self, locations, game_state):
         return [loc for loc in locations if not game_state.contains_stationary_unit(loc)]
@@ -122,20 +118,28 @@ class AlgoStrategy(gamelib.AlgoCore):
         damages = []
         for location in location_options:
             path = game_state.find_path_to_edge(location)
+            if not path:
+                damages.append(9999)
+                continue
             damage = 0
-            if path:
-                for path_location in path:
-                    
-                    damage += len(game_state.get_attackers(path_location, 0)) * 6 
-            damages.append(damage if path else float('inf'))
+            for path_location in path:
+                
+                damage += len(game_state.get_attackers(path_location, 0))
+            damages.append(damage)
+        
+        if not damages: return location_options[0]
         return location_options[damages.index(min(damages))]
 
     def on_action_frame(self, turn_string):
-        state = json.loads(turn_string)
-        events = state.get("events", {})
-        for breach in events.get("breach", []):
-            if breach[4] != 1: 
-                self.scored_on_locations.append(breach[0])
+        try:
+            state = json.loads(turn_string)
+            events = state.get("events", {})
+            breaches = events.get("breach", [])
+            for breach in breaches:
+                if breach[4] == 2:
+                    self.scored_on_locations.append(breach[0])
+        except:
+            pass
 
 if __name__ == "__main__":
     algo = AlgoStrategy()
