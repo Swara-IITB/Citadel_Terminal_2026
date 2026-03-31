@@ -43,13 +43,15 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.send_scouts(game_state)
 
     def build_initial_defenses(self, game_state):
-        core_supports = [[13, 9], [14, 9], [13, 10], [14, 10]]
-        upgraded_supports = [[13, 10], [14, 10]]
+        
+        core_supports = [[13, 11], [14, 11], [13, 12], [14, 12]]
+        upgraded_supports = [[13, 12], [14, 12]]
         
         game_state.attempt_spawn(SUPPORT, core_supports)
         game_state.attempt_upgrade(upgraded_supports)
 
-        core_turrets = [[12, 10], [13, 11], [14, 11], [15, 10]]
+        
+        core_turrets = [[12, 12], [13, 13], [14, 13], [15, 12]]
         game_state.attempt_spawn(TURRET, core_turrets)
 
     def build_reactive_defenses(self, game_state):
@@ -60,7 +62,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         
         self.scored_on_locations = []
 
-        middle_supports = [[13, 9], [14, 9]]
+        
+        middle_supports = [[13, 11], [14, 11]]
         game_state.attempt_upgrade(middle_supports)
 
         supports_fully_upgraded = True
@@ -79,24 +82,18 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         if supports_fully_upgraded:
             for x in self.breached_lanes:
-                front_turret_loc = [x, 13]
-                
-                
                 back_turret_loc = [x, 11] 
-                
                 game_state.attempt_spawn(TURRET, back_turret_loc)
-                game_state.attempt_upgrade(front_turret_loc)
+                
 
     def build_greedy_turrets(self, game_state):
         greedy_locations = []
-        
         
         for x in range(0, 13, 3):  
             greedy_locations.append([x, 13])
         for x in range(27, 14, -3): 
             greedy_locations.append([x, 13])
             
-        
         for x in range(1, 13, 3):
             greedy_locations.append([x, 11])
         for x in range(26, 14, -3):
@@ -150,6 +147,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             path = game_state.find_path_to_edge(location)
             damage = 0
             for path_location in path:
+                
                 damage += len(game_state.get_attackers(path_location, 0)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
             
             if path[-1] in enemy_edges:
