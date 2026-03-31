@@ -44,15 +44,14 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def build_initial_defenses(self, game_state):
         
-        core_supports = [[13, 11], [14, 11], [13, 12], [14, 12]]
-        upgraded_supports = [[13, 12], [14, 12]]
-        
-        game_state.attempt_spawn(SUPPORT, core_supports)
-        game_state.attempt_upgrade(upgraded_supports)
+        if not hasattr(self, 'core_supports'):
+            self.core_supports = [[13, 11], [14, 11], [13, 12], [14, 12]]
+            self.upgraded_supports = [[13, 12], [14, 12]]
+            self.core_turrets = [[12, 12], [13, 13], [14, 13], [15, 12]]
 
-        
-        core_turrets = [[12, 12], [13, 13], [14, 13], [15, 12]]
-        game_state.attempt_spawn(TURRET, core_turrets)
+        game_state.attempt_spawn(SUPPORT, self.core_supports)
+        game_state.attempt_upgrade(self.upgraded_supports)
+        game_state.attempt_spawn(TURRET, self.core_turrets)
 
     def build_reactive_defenses(self, game_state):
         for loc in self.scored_on_locations:
@@ -62,7 +61,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         
         self.scored_on_locations = []
 
-        
         middle_supports = [[13, 11], [14, 11]]
         game_state.attempt_upgrade(middle_supports)
 
@@ -84,31 +82,35 @@ class AlgoStrategy(gamelib.AlgoCore):
             for x in self.breached_lanes:
                 back_turret_loc = [x, 11] 
                 game_state.attempt_spawn(TURRET, back_turret_loc)
-                
 
     def build_greedy_turrets(self, game_state):
-        greedy_locations = []
         
-        for x in range(0, 13, 3):  
-            greedy_locations.append([x, 13])
-        for x in range(27, 14, -3): 
-            greedy_locations.append([x, 13])
-            
-        for x in range(1, 13, 3):
-            greedy_locations.append([x, 11])
-        for x in range(26, 14, -3):
-            greedy_locations.append([x, 11])
+        if not hasattr(self, 'greedy_locations'):
+            self.greedy_locations = []
+            for x in range(0, 13, 3):  
+                self.greedy_locations.append([x, 13])
+            for x in range(27, 14, -3): 
+                self.greedy_locations.append([x, 13])
+            for x in range(1, 13, 3):
+                self.greedy_locations.append([x, 11])
+            for x in range(26, 14, -3):
+                self.greedy_locations.append([x, 11])
 
-        game_state.attempt_spawn(TURRET, greedy_locations)
+        game_state.attempt_spawn(TURRET, self.greedy_locations)
 
     def send_scouts(self, game_state):
         if game_state.get_resource(MP) < 1:
             return
 
-        friendly_edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + \
-                         game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
         
-        deploy_locations = self.filter_blocked_locations(friendly_edges, game_state)
+        if not hasattr(self, 'friendly_edges'):
+            self.friendly_edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + \
+                                  game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
+            self.enemy_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + \
+                               game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT)
+            self.turret_damage = gamelib.GameUnit(TURRET, game_state.config).damage_i
+
+        deploy_locations = self.filter_blocked_locations(self.friendly_edges, game_state)
         
         if not deploy_locations:
             return
@@ -134,23 +136,30 @@ class AlgoStrategy(gamelib.AlgoCore):
                 game_state.attempt_spawn(SCOUT, best_location, 1000)
 
     def least_damage_spawn_location(self, game_state, location_options):
-        enemy_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + \
-                      game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT)
-                      
         valid_options = []
         valid_damages = []
-        
         landlocked_options = []
         landlocked_damages = []
+        
+        
+        
+        tile_damage_cache = {}
         
         for location in location_options:
             path = game_state.find_path_to_edge(location)
             damage = 0
-            for path_location in path:
-                
-                damage += len(game_state.get_attackers(path_location, 0)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
             
-            if path[-1] in enemy_edges:
+            for path_location in path:
+                loc_tuple = (path_location[0], path_location[1])
+                
+                
+                if loc_tuple not in tile_damage_cache:
+                    tile_damage_cache[loc_tuple] = len(game_state.get_attackers(path_location, 0)) * self.turret_damage
+                
+                
+                damage += tile_damage_cache[loc_tuple]
+            
+            if path[-1] in self.enemy_edges:
                 if damage == 0:
                     return location, False
                     
@@ -185,7 +194,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             unit_owner_self = True if breach[4] == 1 else False
             
             if not unit_owner_self:
-                gamelib.debug_write("Got scored on at: {}".format(location))
+                
                 self.scored_on_locations.append(location)
 
 if __name__ == "__main__":
