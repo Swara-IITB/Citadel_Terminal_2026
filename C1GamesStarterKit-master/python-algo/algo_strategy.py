@@ -186,12 +186,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         return filtered
 
     def on_action_frame(self, turn_string):
-        
-        
-        
-        if '"breach": []' in turn_string or '"breach":[]' in turn_string:
-            return
-            
         state = json.loads(turn_string)
         events = state["events"]
         breaches = events["breach"]
@@ -200,6 +194,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             unit_owner_self = True if breach[4] == 1 else False
             
             if not unit_owner_self:
+                
                 self.scored_on_locations.append(location)
 
 if __name__ == "__main__":
