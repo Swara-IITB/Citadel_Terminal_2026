@@ -114,8 +114,8 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def send_scouts(self, game_state):
         """
-        Always send scouts every turn. Selects a pool of random edge locations, 
-        but chooses the one from that random pool that takes the least damage.
+        Always send scouts every turn, but avoid landlocked paths.
+        If all paths are blocked, send Demolishers to break the walls.
         """
         friendly_edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + \
                          game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
@@ -128,20 +128,56 @@ class AlgoStrategy(gamelib.AlgoCore):
             random_options = random.sample(deploy_locations, num_samples)
             
             
-            best_location = self.least_damage_spawn_location(game_state, random_options)
+            best_location, is_landlocked = self.least_damage_spawn_location(game_state, random_options)
             
-            game_state.attempt_spawn(SCOUT, best_location, 1000)
+            if best_location:
+                if is_landlocked:
+                    
+                    game_state.attempt_spawn(DEMOLISHER, best_location, 1000)
+                else:
+                    
+                    game_state.attempt_spawn(SCOUT, best_location, 1000)
 
     def least_damage_spawn_location(self, game_state, location_options):
-        damages = []
+        """
+        Evaluates paths. Separates valid paths (reach the enemy edge) from 
+        landlocked paths (end early at a wall). Returns the best location and 
+        a boolean indicating if it is forced to use a landlocked path.
+        """
+        enemy_edges = game_state.game_map.get_edge_locations(game_state.game_map.TOP_LEFT) + \
+                      game_state.game_map.get_edge_locations(game_state.game_map.TOP_RIGHT)
+                      
+        valid_options = []
+        valid_damages = []
+        
+        landlocked_options = []
+        landlocked_damages = []
+        
         for location in location_options:
             path = game_state.find_path_to_edge(location)
             damage = 0
             for path_location in path:
                 damage += len(game_state.get_attackers(path_location, 0)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
-            damages.append(damage)
+            
+            
+            if path[-1] in enemy_edges:
+                valid_options.append(location)
+                valid_damages.append(damage)
+            else:
+                landlocked_options.append(location)
+                landlocked_damages.append(damage)
         
-        return location_options[damages.index(min(damages))]
+        
+        if valid_options:
+            best_idx = valid_damages.index(min(valid_damages))
+            return valid_options[best_idx], False
+        
+        
+        elif landlocked_options:
+            best_idx = landlocked_damages.index(min(landlocked_damages))
+            return landlocked_options[best_idx], True
+            
+        return None, False
 
     def filter_blocked_locations(self, locations, game_state):
         filtered = []
