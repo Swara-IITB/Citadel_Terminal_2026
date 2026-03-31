@@ -27,3 +27,4 @@ We don't blindly spam units. When we have the resources, Takedown randomly sampl
 If the algorithm detects that the best path is completely walled off by the enemy (landlocked), it automatically pivots to deploying **Demolishers** to bust the door down. Otherwise, we swarm the safest path with **Scouts** only!
 
 ---
+![Image](https://github.com/user-attachments/assets/ecfd9983-5d61-4bd9-bccc-c83a6466bdbe)
