@@ -24,122 +24,139 @@ class AlgoStrategy(gamelib.AlgoCore):
         INTERCEPTOR = config["unitInformation"][5]["shorthand"]
         MP = 1
         SP = 0
-        self.scored_on_locations = []
 
     def on_turn(self, turn_state):
-        try:
-            game_state = gamelib.GameState(self.config, turn_state)
-            gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
-            game_state.suppress_warnings(True)
-
-            self.starter_strategy(game_state)
-            game_state.submit_turn()
-        except Exception as e:
-            gamelib.debug_write('CRITICAL ERROR in on_turn: {}'.format(e))
+        game_state = gamelib.GameState(self.config, turn_state)
+        game_state.suppress_warnings(True)
+        self.starter_strategy(game_state)
+        game_state.submit_turn()
 
     def starter_strategy(self, game_state):
-        self.maintain_and_build_defenses(game_state)
-        self.build_reactive_defense(game_state)
-        self.dynamic_offense(game_state)
+        """ The Dynamic Engine: Adaptive Battery, Sieve Expansion, and Path-Scored Swarms """
+        self.build_dynamic_battery(game_state)
+        self.build_dynamic_sieve(game_state)
+        self.dynamic_shielded_offense(game_state)
 
-    def maintain_and_build_defenses(self, game_state):
-        self.frontline_gaps = []
+    def build_dynamic_battery(self, game_state):
+        """
+        Dynamically maintains a cluster of Supports in a designated 'safe zone'.
+        It checks if they exist, and builds/upgrades them if SP allows.
+        """
         
+        battery_zone = [[7, 11], [6, 11], [7, 10]]
         
-        
-        anchors = [0, 27, 4, 23, 8, 19, 12, 15]
-        
-        fillers = [2, 25, 6, 21, 10, 17]
-        
-        remaining = [i for i in range(28) if i not in anchors + fillers + [13, 14]]
-        
-        
-        build_order = anchors + fillers + remaining
-        
-        for x in build_order:
+        for loc in battery_zone:
             
-            dist_from_edge = x if x < 14 else 27 - x
-            target_y = 13 if dist_from_edge % 2 == 0 else 12
-            loc = [x, target_y]
+            unit = game_state.contains_stationary_unit(loc)
+            if not unit:
+                if game_state.get_resource(SP) >= 4:
+                    game_state.attempt_spawn(SUPPORT, [loc])
             
-            if game_state.contains_stationary_unit(loc):
-                units = game_state.game_map[tuple(loc)]
-                if units and units[0].health < 30:
-                    
-                    if game_state.get_resource(SP) >= 3:
-                        game_state.attempt_spawn(TURRET, [[x, 11]])
-            else:
-                if game_state.get_resource(SP) >= 3:
-                    game_state.attempt_spawn(TURRET, [loc])
-                else:
-                    
-                    
-                    if x in anchors:
-                        self.frontline_gaps.append(x)
+            
+            unit = game_state.contains_stationary_unit(loc)
+            if unit and unit.unit_type == SUPPORT and not unit.upgraded:
+                if game_state.get_resource(SP) >= 4:
+                    game_state.attempt_upgrade([loc])
+
+    def build_dynamic_sieve(self, game_state):
+        """
+        Generates the Turret arc mathematically. Starts from the center 
+        and expands outward, skipping tiles to create a breathable sieve.
+        """
+        center_x = 13
+        
+        
+        left_xs = list(range(center_x - 1, -1, -3))  
+        right_xs = list(range(center_x + 2, 28, 3))  
+        
+        target_frontline_xs = []
+        for l, r in zip(left_xs, right_xs):
+            target_frontline_xs.extend([l, r])
+            
+        
+        for x in target_frontline_xs:
+            loc = [x, 13]
+            if not game_state.contains_stationary_unit(loc) and game_state.get_resource(SP) >= 3:
+                game_state.attempt_spawn(TURRET, [loc])
 
         
-        if game_state.get_resource(SP) >= 4:
-            game_state.attempt_spawn(SUPPORT, [[13, 11], [14, 11]])
+        left_xs_back = list(range(center_x - 2, -1, -3))
+        right_xs_back = list(range(center_x + 3, 28, 3))
+        
+        target_backline_xs = []
+        for l, r in zip(left_xs_back, right_xs_back):
+            target_backline_xs.extend([l, r])
 
-    def dynamic_offense(self, game_state):
+        for x in target_backline_xs:
+            loc = [x, 12]
+            
+            if loc in [[7, 11], [6, 11], [7, 10], [6, 12], [7, 12]]: 
+                continue
+            if not game_state.contains_stationary_unit(loc) and game_state.get_resource(SP) >= 3:
+                game_state.attempt_spawn(TURRET, [loc])
+
+    def dynamic_shielded_offense(self, game_state):
+        """
+        The Path-Scoring Engine: Simulates every valid edge, finds the path 
+        that intersects the highest number of friendly Support shields, and swarms it.
+        """
         current_mp = game_state.get_resource(MP)
         
         
-        if len(self.frontline_gaps) > 2 and current_mp >= 1:
+        if current_mp >= 8:
+            
+            my_supports = []
+            for x in range(28):
+                for y in range(14):
+                    loc = [x, y]
+                    unit = game_state.contains_stationary_unit(loc)
+                    if unit and unit.unit_type == SUPPORT:
+                        my_supports.append(unit)
+
+            
             edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + \
                     game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
-            deploy_options = self.filter_blocked_locations(edges, game_state)
-            if deploy_options:
-                game_state.attempt_spawn(INTERCEPTOR, deploy_options[0], 1)
-                game_state.attempt_spawn(SCOUT, deploy_options[0], 1000)
-                    
-        
-        elif current_mp >= 6:
-            all_edges = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + \
-                        game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
-            
-            deploy_options = self.filter_blocked_locations(all_edges, game_state)
-            if deploy_options:
-                best_loc = self.least_damage_spawn_location(game_state, deploy_options)
-                
-                game_state.attempt_spawn(SCOUT, best_loc, 1000)
+            valid_edges = self.filter_blocked_locations(edges, game_state)
 
-    def build_reactive_defense(self, game_state):
-        for location in self.scored_on_locations:
-            if game_state.get_resource(SP) >= 3:
-                build_location = [location[0], 11]
-                if game_state.game_map.in_arena_bounds(build_location):
-                    game_state.attempt_spawn(TURRET, build_location)
+            best_spawn_loc = None
+            max_shield_score = -1
+
+            
+            if valid_edges:
+                for edge in valid_edges:
+                    path = game_state.find_path_to_edge(edge)
+                    shield_score = 0
+                    
+                    if path:
+                        for step in path:
+                            
+                            for support in my_supports:
+                                
+                                dist = math.sqrt((step[0] - support.x)**2 + (step[1] - support.y)**2)
+                                
+                                if dist <= 8: 
+                                    shield_score += 1
+                                    
+                    
+                    if shield_score > max_shield_score:
+                        max_shield_score = shield_score
+                        best_spawn_loc = edge
+
+                
+                if not best_spawn_loc:
+                    best_spawn_loc = valid_edges[0]
+
+                
+                num_scouts = int(current_mp)
+                if num_scouts > 0:
+                    game_state.attempt_spawn(SCOUT, best_spawn_loc, num_scouts)
 
     def filter_blocked_locations(self, locations, game_state):
-        return [loc for loc in locations if not game_state.contains_stationary_unit(loc)]
-
-    def least_damage_spawn_location(self, game_state, location_options):
-        damages = []
-        for location in location_options:
-            path = game_state.find_path_to_edge(location)
-            if not path:
-                damages.append(9999)
-                continue
-            damage = 0
-            for path_location in path:
-                
-                damage += len(game_state.get_attackers(path_location, 0))
-            damages.append(damage)
-        
-        if not damages: return location_options[0]
-        return location_options[damages.index(min(damages))]
-
-    def on_action_frame(self, turn_string):
-        try:
-            state = json.loads(turn_string)
-            events = state.get("events", {})
-            breaches = events.get("breach", [])
-            for breach in breaches:
-                if breach[4] == 2:
-                    self.scored_on_locations.append(breach[0])
-        except:
-            pass
+        filtered = []
+        for location in locations:
+            if not game_state.contains_stationary_unit(location):
+                filtered.append(location)
+        return filtered
 
 if __name__ == "__main__":
     algo = AlgoStrategy()
